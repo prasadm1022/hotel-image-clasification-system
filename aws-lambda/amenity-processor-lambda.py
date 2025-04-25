@@ -1,5 +1,7 @@
 import json
 import boto3
+import base64
+import urllib.parse
 from pymongo import MongoClient
 from bson import ObjectId
 
@@ -7,6 +9,7 @@ from bson import ObjectId
 def lambda_handler(event, context):
     # Initialize clients
     bedrock = boto3.client('bedrock-runtime')
+    s3 = boto3.client('s3')
     mongo_client = MongoClient('mongodb://3.91.45.234:27017/')
     db = mongo_client['hotel_db']
 
@@ -16,9 +19,53 @@ def lambda_handler(event, context):
 
     # Get all rooms for this hotel (if any exist)
     rooms = list(db.hotel_rooms.find({"hotel_id": hotel_id})) or [None]
-
-    # Call Claude 3 to extract amenities
-    amenities = get_amenities_from_bedrock(bedrock)
+    
+    # Get hotel images from DB
+    hotel_images = list(db.hotel_images.find({"hotel_id": hotel_id}))
+    
+    if not hotel_images:
+        print(f"No images found for hotel {hotel_id}")
+        return {
+            "statusCode": 404,
+            "body": json.dumps({"message": "No images found"})
+        }
+    
+    # Process each image one by one and collect unique amenities
+    all_amenities = set()
+    max_amenities = 10
+    
+    for img in hotel_images:
+        # Stop if we've already found 10 unique amenities
+        if len(all_amenities) >= max_amenities:
+            print(f"Reached {max_amenities} unique amenities, stopping image analysis")
+            break
+            
+        try:
+            # Get image data from S3
+            bucket, key = parse_s3_url(img['image_url'])
+            image_data = s3.get_object(Bucket=bucket, Key=key)['Body'].read()
+            encoded_image = base64.b64encode(image_data).decode('utf-8')
+            media_type = get_media_type(img['image_url'])
+            
+            # Process single image with Claude
+            image_amenities = get_amenities_from_bedrock(bedrock, encoded_image, media_type)
+            
+            # Add unique amenities to our set
+            all_amenities.update(image_amenities)
+            
+            # If we now have more than max_amenities, trim the list
+            if len(all_amenities) > max_amenities:
+                all_amenities = set(list(all_amenities)[:max_amenities])
+                
+            print(f"Image {img['image_id']} added {len(image_amenities)} amenities, total unique: {len(all_amenities)}")
+            
+        except Exception as e:
+            print(f"Error processing image {img['image_id']}: {str(e)}")
+            continue
+    
+    # Convert set back to list for processing
+    amenities = list(all_amenities)
+    print(f"Final amenities list: {amenities}")
 
     # Process amenities
     for amenity in amenities:
@@ -106,8 +153,10 @@ def should_associate_amenity(amenity, room_type):
     return False
 
 
-def get_amenities_from_bedrock(bedrock):
-    prompt = """Return ONLY a comma-separated list of these standardized amenity names:
+def get_amenities_from_bedrock(bedrock, encoded_image, media_type):
+    """Extract amenities using Claude 3 for a single image"""
+    prompt = """Analyze this hotel image and return ONLY a comma-separated list of these standardized amenity names 
+    that you can visibly identify in the image:
 
     General Amenities (hotel-wide):
     - 24-hour-front-desk
@@ -129,13 +178,26 @@ def get_amenities_from_bedrock(bedrock):
 
     Example response: free-wi-fi,air-conditioning,swimming-pool"""
 
+    # Create message with single image
+    message_content = [
+        {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": media_type,
+                "data": encoded_image
+            }
+        },
+        {"type": "text", "text": prompt}
+    ]
+
     response = bedrock.invoke_model(
         modelId="anthropic.claude-3-sonnet-20240229-v1:0",
         body=json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
             "messages": [{
                 "role": "user",
-                "content": [{"type": "text", "text": prompt}]
+                "content": message_content
             }],
             "max_tokens": 300
         })
@@ -143,3 +205,24 @@ def get_amenities_from_bedrock(bedrock):
 
     result = json.loads(response['body'].read())['content'][0]['text']
     return list(set(a.strip().lower() for a in result.split(',') if a.strip()))
+
+
+def parse_s3_url(url):
+    """Extract bucket and key from S3 URL"""
+    parsed = urllib.parse.urlparse(url)
+    if not parsed.netloc.endswith('.s3.amazonaws.com'):
+        raise ValueError(f"Invalid S3 URL: {url}")
+    return parsed.netloc.split('.')[0], parsed.path.lstrip('/')
+
+
+def get_media_type(url):
+    """Get media type from file extension"""
+    IMAGE_EXTENSIONS = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif'
+    }
+    ext = '.' + url.split('.')[-1].lower()
+    return IMAGE_EXTENSIONS.get(ext, 'image/jpeg')

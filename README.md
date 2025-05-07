@@ -1,64 +1,55 @@
-# aws-hackathon
+# Hotel Image Classification System
 
-An AWS-based hotel image processing pipeline that uses AI to analyze and categorize hotel images, extract room information, and calculate image quality ratings.
+Team Insight Guild ~ [Gen AI Buildathon 2025 @ CodeGen International Pvt Ltd]
 
-## Components
+https://fb.watch/zrhMduZ318/
 
-### AWS Lambda Functions
+https://www.facebook.com/lifeatcodegen.int/posts/pfbid02DayKXaKiUhofFFNjRRbrPe8TLJE1XhEKm7fV5DiJacbP2aYqB7yFNTtaem6DBU4bl
 
-- **hotel-processor-lambda**: Processes uploaded hotel images and categorizes them into: exterior, interior, foods, leisure, parking, rooms, or bathrooms
-- **room-processor-lambda**: Analyzes room images to extract room names and types
-- **amenity-processor-lambda**: Identifies and catalogs hotel and room-specific amenities
-- **rating-calculator-lambda**: Calculates image quality ratings and selects the best hotel images
+A system that has been based on AWS that uses AI to analyze and categorize hotel related images, extract specific
+information.
 
-### Technologies Used
+### Features
 
-- AWS Lambda
-- AWS Bedrock (Claude 3)
-- Amazon S3
-- Amazon SNS
-- MongoDB
+- Categorize hotel images into categories like exterior, interior, foods, rooms etc.
+- Categorize identified room images into common room types like suite, deluxe, standard etc.
+- Extract hotel wise facilities
+- Extract room wise facilities
+- Calculate ratings for images based on quality, clarity, and relevance and select cover image for the hotel.
+- Calculate ratings for images based on quality, clarity, and relevance and select cover image for the room.
+
+### Components
+
+- **Python based web application:** For uploading images & showing results
+- **Amazon S3:** For storing images
+- **AWS Lambda:** For serverless processing of images
+- **AWS Bedrock:** For AI analysis using "Claude 3 Sonnet"
+- **Amazon SNS:** For triggering Lambda functions based on events
+- **EC2 & MongoDB:** For storing and managing data
 
 ## Data Flow Diagram
 
 ```mermaid
 graph TD
-    S3[Amazon S3] -->|Image Upload| L1[hotel-processor-lambda]
-    L1 -->|Categorizes Images| DB1[(MongoDB<br/>hotel_images)]
-    L1 -->|Categorization Data| DB2[(MongoDB<br/>hotel_context)]
-    L1 -->|Room Images Found| SNS1[SNS: HotelImageProcessed]
-    
-    SNS1 -->|Triggers| L2[room-processor-lambda]
-    L2 -->|Room Details| DB3[(MongoDB<br/>hotel_rooms)]
-    L2 -->|Processing Complete| SNS2[SNS: RoomImageProcessed]
-    
-    SNS2 -->|Triggers| L3[amenity-processor-lambda]
-    L3 -->|Amenity Data| DB4[(MongoDB<br/>hotel_amenities)]
-    L3 -->|Processing Complete| SNS3[SNS: AmnImageProcessed]
-    
-    SNS3 -->|Triggers| L4[rating-calculator-lambda]
-    L4 -->|Updates Ratings| DB1
-    L4 -->|Best Images| DB5[(MongoDB<br/>hotels)]
-    
-    Claude3[AWS Bedrock<br/>Claude 3] -.->|AI Analysis| L1
-    Claude3 -.->|AI Analysis| L2
-    Claude3 -.->|AI Analysis| L3
-    Claude3 -.->|AI Analysis| L4
+    U1(user) -->|upload images| S3[<b>Amazon S3</b>]
+    S3 -->|triggers| L1[<b>hotel-processor-lambda</b>]
+    ABR[<b>Amazon Bedrock</b><br/>Claude 3 Sonnet] -.->|<b>AI Analysis</b><br>hotel image categories| L1
+    L1 -.->|store<br>hotel categories| DB1[(<b>MongoDB</b><br/>hotel data)]
+    L1 -->|lambda<br>completed| SNS1[<b>Amazon SNS</b><br>HotelImageProcessed]
+    SNS1 -->|triggers| L2[<b>room-processor-lambda</b>]
+    ABR -.->|<b>AI Analysis</b><br>room image categories| L2
+    L2 -.->|store<br>room categories| DB2[(<b>MongoDB</b><br/>room data)]
+    L2 -->|lambda<br>completed| SNS2[<b>Amazon SNS</b><br>RoomImageProcessed]
+    SNS2 -->|triggers| L3[<b>amenity-processor-lambda</b>]
+    ABR -.->|<b>AI Analysis</b><br>hotel amenities| L3
+    L3 -.->|store<br>hotel facilities| DB1
+    L3 -.->|store<br>room facilities| DB2
+    L3 -->|lambda<br>completed| SNS3[<b>Amazon SNS</b><br>AmnImageProcessed]
+    SNS3 -->|triggers| L4[<b>rating-calculator-lambda</b>]
+    ABR -.->|<b>AI Analysis</b><br>image ratings| L4
+    L4 -.->|store<br>hotel image ratings| DB1
+    L4 -.->|store<br>room image ratings| DB2
+    DB1 -.->|<b>retrieve data</b>| API[<b>API</b>]
+    DB2 -.->|<b>retrieve data</b>| API
+    U2(users/frontend) -->|request hotel/room data| API
 ```
-
-## Processing Pipeline
-
-1. Images are uploaded to S3 which triggers the hotel-processor-lambda
-2. Hotel images are categorized and stored in MongoDB
-3. Room images are processed to extract room details
-4. Amenities are identified and associated with hotels/rooms
-5. Image quality ratings are calculated
-
-## Data Storage
-
-MongoDB Collections:
-- hotel_images: Stores image metadata and URLs
-- hotel_rooms: Stores room information
-- hotel_amenities: Stores amenity associations
-- hotel_context: Stores image categorization data
-- hotels: Stores hotel information including main images

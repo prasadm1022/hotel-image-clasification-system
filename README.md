@@ -1,3 +1,5 @@
+![cover](cover.jpg)
+
 # Hotel Image Classification System
 
 Team Insight Guild ~ [Gen AI Buildathon 2025 @ CodeGen International Pvt Ltd]

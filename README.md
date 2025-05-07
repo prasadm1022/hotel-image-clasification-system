@@ -55,3 +55,11 @@ graph TD
     DB2 -.->|<b>retrieve data</b>| API
     U2(users/frontend) -->|request hotel/room data| API
 ```
+
+### Collaborators
+
+- Dushan Wickramasinghe (https://github.com/DushanWIckramasinghe)
+- Prasad Madusanka (https://github.com/prasadm1022)
+- Melanga Dissanayake (https://github.com/melanga)
+- Gayan Bandara (https://github.com/ThusithaGayan)
+- Miuru Shalinda (https://github.com/miuru)
